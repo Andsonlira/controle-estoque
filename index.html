@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão de Estoque Telecom - Provedor</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background-color: #f8f9fa; }
+    .card-metric { border-left: 4px solid #0d6efd; }
+    .card-warning-metric { border-left: 4px solid #dc3545; }
+    .badge-unidade { font-size: 0.8em; background-color: #e9ecef; color: #495057; }
+  </style>
+</head>
+<body>
+
+<div class="container my-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="text-primary m-0">📦 Controle interno de Estoque</h2>
+      <small class="text-muted">Lista Base: Estoque em 07/10/2026</small>
+    </div>
+    <button class="btn btn-outline-danger btn-sm" onclick="restaurarEstoqueInicial()">
+      ↺ Restaurar Estoque Inicial
+    </button>
+  </div>
+
+  <!-- Cards de Métricas -->
+  <div class="row mb-4">
+    <div class="col-md-4 mb-2">
+      <div class="card card-metric shadow-sm p-3">
+        <h6 class="text-muted">Total de Itens Cadastrados</h6>
+        <h3 id="metric-total-itens" class="m-0">0</h3>
+      </div>
+    </div>
+    <div class="col-md-4 mb-2">
+      <div class="card card-metric shadow-sm p-3">
+        <h6 class="text-muted">Volume Total de Unidades/Peças</h6>
+        <h3 id="metric-volume-total" class="m-0">0</h3>
+      </div>
+    </div>
+    <div class="col-md-4 mb-2">
+      <div class="card card-warning-metric shadow-sm p-3">
+        <h6 class="text-muted">Itens com Baixa Quantidade (≤ 5)</h6>
+        <h3 id="metric-itens-criticos" class="text-danger m-0">0</h3>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Formulário de Cadastro / Edição -->
+    <div class="col-lg-4 mb-4">
+      <div class="card shadow-sm p-3">
+        <h5 id="form-titulo" class="card-title mb-3">➕ Inserir Novo Material</h5>
+        <form id="form-material">
+          <input type="hidden" id="item-id">
+          
+          <div class="mb-3">
+            <label class="form-label fw-bold">Nome do Material</label>
+            <input type="text" id="item-nome" class="form-control" placeholder="Ex: ONU Intelbras" required>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-bold">Quantidade</label>
+              <input type="number" id="item-qtd" class="form-control" min="0" placeholder="0" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label fw-bold">Unidade</label>
+              <select id="item-unidade" class="form-select">
+                <option value="UN">UN / Peça</option>
+                <option value="Saco">Saco</option>
+                <option value="Bobina">Bobina</option>
+                <option value="Rolo">Rolo</option>
+                <option value="Metros">Metros</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold">Descrição / Observações</label>
+            <input type="text" id="item-descricao" class="form-control" placeholder="Ex: CPE / ONU">
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="submit" id="btn-salvar" class="btn btn-primary">Salvar Material</button>
+            <button type="button" id="btn-cancelar" class="btn btn-secondary d-none" onclick="limparFormulario()">Cancelar Edição</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tabela de Materiais -->
+    <div class="col-lg-8 mb-4">
+      <div class="card shadow-sm p-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title m-0">Lista de Materiais em Estoque</h5>
+          <input type="text" id="input-busca" class="form-control form-control-sm w-50" placeholder="🔍 Buscar material..." onkeyup="filtrarTabela()">
+        </div>
+
+        <div class="table-responsive" style="max-height: 450px; overflow-y: auto;">
+          <table class="table table-hover align-middle">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>Item / Descrição</th>
+                <th class="text-center">Qtd.</th>
+                <th>Observações</th>
+                <th class="text-end">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-estoque">
+              <!-- Renderizado via JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Gráfico -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card shadow-sm p-3">
+        <h5 class="card-title mb-3">📊 Métricas: Visão de Quantidade por Item</h5>
+        <canvas id="chartEstoque" style="max-height: 350px;"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Lista inicial fornecida do estoque de 07/10/2026
+  const dadosIniciais = [
+    { id: 1, nome: "Acoplador", qtd: 30, unidade: "UN", descricao: "Adaptador acoplador óptico" },
+    { id: 2, nome: "Caixa emenda drop", qtd: 5, unidade: "UN", descricao: "Caixa de emenda para drop" },
+    { id: 3, nome: "Fita isolante 3M", qtd: 3, unidade: "UN", descricao: "Fita isolante" },
+    { id: 4, nome: "Conector RJ45", qtd: 80, unidade: "UN", descricao: "Conector de rede" },
+    { id: 5, nome: "Esticador G8 laranja", qtd: 1, unidade: "Saco", descricao: "Grampo esticador de Fibra drop" },
+    { id: 6, nome: "ONU Intelbras", qtd: 52, unidade: "UN", descricao: "CPE / ONU" },
+    { id: 7, nome: "Conector de óptico", qtd: 50, unidade: "UN", descricao: "Conectore manual fibra drop" },
+    { id: 8, nome: "ONT intelbras", qtd: 23, unidade: "UN", descricao: "ONT intelbras 1200" },
+    { id: 9, nome: "ONT fiberhome", qtd: 4, unidade: "UN", descricao: "ONT intelbras fiberhome" },
+    { id: 10, nome: "Grampos fixadores (parede)", qtd: 110, unidade: "UN", descricao: "Grampos fixação drop parede" },
+    { id: 11, nome: "Arame de espinar", qtd: 1, unidade: "UN", descricao: "Arame para fixação" },
+    { id: 12, nome: "Fita dupla face", qtd: 1, unidade: "UN", descricao: "Fita adesiva dupla face" },
+    { id: 13, nome: "Fita p/ rotulador", qtd: 3, unidade: "UN", descricao: "fita para rotuladora" },
+    { id: 14, nome: "Fita galvanizada", qtd: 1, unidade: "Rolo", descricao: "Fita perfurada/galvanizada" },
+    { id: 15, nome: "Bobina Fibra drop", qtd: 5, unidade: "Bobina", descricao: "Cabo Drop Óptico" },
+    { id: 16, nome: "Cabo UTP", qtd: 1, unidade: "Bobina", descricao: "cabo de rede rj45" },
+    { id: 17, nome: "Caixa de emenda Ceo", qtd: 5, unidade: "UN", descricao: "CEO 24FO" },
+    { id: 18, nome: "Caixa de terminal óptico", qtd: 10, unidade: "UN", descricao: "Caixa CTO de atendimento 1/16" },
+    { id: 19, nome: "Alça branca", qtd: 35, unidade: "UN", descricao: "Alça preformada As120" },
+    { id: 20, nome: "Alça Amarela", qtd: 16, unidade: "UN", descricao: "Alça preformada As120" },
+    { id: 21, nome: "Alça vermelha", qtd: 0, unidade: "UN", descricao: "Alça preformada As120" },
+    { id: 22, nome: "Alça branca", qtd: 225, unidade: "UN", descricao: "Alça preformada AS80" },
+    { id: 23, nome: "Braçadeira Bap", qtd: 4, unidade: "UN", descricao: "BAP para postes" },
+    { id: 24, nome: "Suporte duplo", qtd: 1, unidade: "Saco", descricao: "suporte universal de plastico " },
+    { id: 25, nome: "Parafuso J com porca", qtd: 10, unidade: "UN", descricao: "Parafuso J" }
+  ];
+
+  // Carregar do localStorage ou usar os dados iniciais
+  let estoque = JSON.parse(localStorage.getItem("estoque_telecom_v2")) || dadosIniciais;
+  let chartInstance = null;
+
+  function salvarNoLocalStorage() {
+    localStorage.setItem("estoque_telecom_v2", JSON.stringify(estoque));
+  }
+
+  function renderizarTabela() {
+    const tbody = document.getElementById("tabela-estoque");
+    tbody.innerHTML = "";
+
+    let totalItens = estoque.length;
+    let volumeTotal = 0;
+    let itensCriticos = 0;
+
+    estoque.forEach(item => {
+      volumeTotal += Number(item.qtd);
+      if (Number(item.qtd) <= 5) itensCriticos++;
+
+      tbody.innerHTML += `
+        <tr>
+          <td>
+            <strong>${item.nome}</strong>
+            <span class="badge badge-unidade ms-1">${item.unidade}</span>
+          </td>
+          <td class="text-center">
+            <span class="badge ${item.qtd <= 5 ? 'bg-danger' : 'bg-primary'} fs-6">
+              ${item.qtd}
+            </span>
+          </td>
+          <td><small class="text-muted">${item.descricao || '-'}</small></td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-warning me-1" onclick="carregarParaEdicao(${item.id})">✏️ Editar</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deletarItem(${item.id})">🗑️ Excluir</button>
+          </td>
+        </tr>
+      `;
+    });
+
+    // Atualizar os Cards
+    document.getElementById("metric-total-itens").innerText = totalItens;
+    document.getElementById("metric-volume-total").innerText = volumeTotal;
+    document.getElementById("metric-itens-criticos").innerText = itensCriticos;
+
+    atualizarGrafico();
+  }
+
+  // Formulário Submit (Inserir ou Atualizar)
+  document.getElementById("form-material").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    const id = document.getElementById("item-id").value;
+    const nome = document.getElementById("item-nome").value.trim();
+    const qtd = parseInt(document.getElementById("item-qtd").value);
+    const unidade = document.getElementById("item-unidade").value;
+    const descricao = document.getElementById("item-descricao").value.trim();
+
+    if (id) {
+      // Atualização de Item Existente (UPDATE)
+      const index = estoque.findIndex(item => item.id == id);
+      if (index !== -1) {
+        estoque[index] = { id: Number(id), nome, qtd, unidade, descricao };
+      }
+    } else {
+      // Inserção de Novo Item (CREATE)
+      const novoId = estoque.length > 0 ? Math.max(...estoque.map(i => i.id)) + 1 : 1;
+      estoque.push({ id: novoId, nome, qtd, unidade, descricao });
+    }
+
+    salvarNoLocalStorage();
+    renderizarTabela();
+    limparFormulario();
+  });
+
+  // Função para carregar dados no formulário e editar (READ -> UPDATE)
+  function carregarParaEdicao(id) {
+    const item = estoque.find(i => i.id === id);
+    if (item) {
+      document.getElementById("item-id").value = item.id;
+      document.getElementById("item-nome").value = item.nome;
+      document.getElementById("item-qtd").value = item.qtd;
+      document.getElementById("item-unidade").value = item.unidade;
+      document.getElementById("item-descricao").value = item.descricao;
+
+      document.getElementById("form-titulo").innerText = "✏️ Editar Material";
+      document.getElementById("btn-salvar").innerText = "Atualizar Material";
+      document.getElementById("btn-cancelar").classList.remove("d-none");
+    }
+  }
+
+  // Função para Deletar Item (DELETE)
+  function deletarItem(id) {
+    if (confirm("Tem certeza que deseja excluir este item do estoque?")) {
+      estoque = estoque.filter(item => item.id !== id);
+      salvarNoLocalStorage();
+      renderizarTabela();
+    }
+  }
+
+  function limparFormulario() {
+    document.getElementById("form-material").reset();
+    document.getElementById("item-id").value = "";
+    document.getElementById("form-titulo").innerText = "➕ Inserir Novo Material";
+    document.getElementById("btn-salvar").innerText = "Salvar Material";
+    document.getElementById("btn-cancelar").classList.add("d-none");
+  }
+
+  function filtrarTabela() {
+    const termo = document.getElementById("input-busca").value.toLowerCase();
+    const linhas = document.querySelectorAll("#tabela-estoque tr");
+
+    linhas.forEach(linha => {
+      const texto = linha.innerText.toLowerCase();
+      linha.style.display = texto.includes(termo) ? "" : "none";
+    });
+  }
+
+  function restaurarEstoqueInicial() {
+    if (confirm("Isto substituirá suas alterações pelos dados padrão de 07/10/2026. Confirmar?")) {
+      estoque = [...dadosIniciais];
+      salvarNoLocalStorage();
+      renderizarTabela();
+    }
+  }
+
+  function atualizarGrafico() {
+    const ctx = document.getElementById('chartEstoque').getContext('2d');
+    
+    // Pegar os 10 maiores itens em quantidade para não poluir o gráfico
+    const itensOrdenados = [...estoque].sort((a, b) => b.qtd - a.qtd).slice(0, 10);
+
+    const labels = itensOrdenados.map(i => i.nome);
+    const data = itensOrdenados.map(i => i.qtd);
+
+    if (chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Quantidade em Estoque (Top 10 Itens)',
+          data: data,
+          backgroundColor: '#0d6efd',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: true } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
+
+  // Inicialização do sistema
+  renderizarTabela();
+</script>
+</body>
+</html>
